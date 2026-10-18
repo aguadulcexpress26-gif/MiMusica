@@ -7,6 +7,7 @@ import android.widget.ArrayAdapter
 import android.widget.ListView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.room.Room
 import kotlinx.coroutines.launch
 
@@ -26,16 +27,15 @@ class PlaylistDetailActivity : AppCompatActivity() {
         listView = findViewById(R.id.listPlaylistSongs)
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "music-db").build()
 
-        // Al tocar, guardamos la canción en la memoria y cerramos esta pantalla
+        // Al tocar, ENVIAMOS LA ORDEN PERO NO CERRAMOS LA PANTALLA
         listView.setOnItemClickListener { _, _, position, _ ->
             val selectedSongId = songIdsList[position]
+            val intent = Intent("PLAY_SONG_FROM_PLAYLIST")
+            intent.putExtra("SONG_ID", selectedSongId)
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
             
-            // Usamos una "memoria compartida" del teléfono
-            val prefs = getSharedPreferences("MusicPrefs", MODE_PRIVATE)
-            prefs.edit().putLong("PENDING_SONG_ID", selectedSongId).apply()
-            
-            // Cerramos la pantalla para volver a la principal
-            finish() 
+            // OPCIONAL: Un pequeño aviso para que sepas que está sonando
+            android.widget.Toast.makeText(this, "Reproduciendo...", android.widget.Toast.LENGTH_SHORT).show()
         }
         
         loadSongsFromPlaylist()
