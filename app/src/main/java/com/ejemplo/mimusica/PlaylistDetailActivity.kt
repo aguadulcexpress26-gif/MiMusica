@@ -1,5 +1,7 @@
 package com.ejemplo.mimusica
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.ArrayAdapter
@@ -13,6 +15,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
     private lateinit var db: AppDatabase
     private lateinit var listView: ListView
     private var playlistId: Int = 0
+    private var songIdsList: List<Long> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,18 +26,27 @@ class PlaylistDetailActivity : AppCompatActivity() {
 
         listView = findViewById(R.id.listPlaylistSongs)
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "music-db").build()
+
+        // Al tocar una canción, devolvemos el ID a MainActivity y cerramos esta pantalla
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val selectedSongId = songIdsList[position]
+            val returnIntent = Intent()
+            returnIntent.putExtra("SELECTED_SONG_ID", selectedSongId)
+            setResult(Activity.RESULT_OK, returnIntent)
+            finish()
+        }
         
         loadSongsFromPlaylist()
     }
 
     private fun loadSongsFromPlaylist() {
         lifecycleScope.launch {
-            val songIds = db.playlistDao().getSongIdsForPlaylist(playlistId)
+            songIdsList = db.playlistDao().getSongIdsForPlaylist(playlistId)
             val songTitles = mutableListOf<String>()
             
-            if (songIds.isNotEmpty()) {
+            if (songIdsList.isNotEmpty()) {
                 val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE)
-                val selection = "${MediaStore.Audio.Media._ID} IN (${songIds.joinToString(",")})"
+                val selection = "${MediaStore.Audio.Media._ID} IN (${songIdsList.joinToString(",")})"
                 
                 contentResolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, selection, null, null)?.use { c ->
                     val titleCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
