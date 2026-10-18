@@ -1,6 +1,5 @@
 package com.ejemplo.mimusica
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.provider.MediaStore
@@ -27,13 +26,12 @@ class PlaylistDetailActivity : AppCompatActivity() {
         listView = findViewById(R.id.listPlaylistSongs)
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "music-db").build()
 
-        // Al tocar una canción, devolvemos el ID a MainActivity y cerramos esta pantalla
+        // Al tocar, enviamos la orden de reproducir sin cerrar la pantalla
         listView.setOnItemClickListener { _, _, position, _ ->
             val selectedSongId = songIdsList[position]
-            val returnIntent = Intent()
-            returnIntent.putExtra("SELECTED_SONG_ID", selectedSongId)
-            setResult(Activity.RESULT_OK, returnIntent)
-            finish()
+            val intent = Intent("PLAY_SONG_FROM_PLAYLIST")
+            intent.putExtra("SONG_ID", selectedSongId)
+            sendBroadcast(intent) // Enviamos la señal a MainActivity
         }
         
         loadSongsFromPlaylist()
