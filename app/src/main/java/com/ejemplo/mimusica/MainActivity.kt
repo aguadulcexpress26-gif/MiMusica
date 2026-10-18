@@ -11,6 +11,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
 import android.widget.SeekBar
@@ -41,7 +43,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seekBar: SeekBar
     private lateinit var txtCurrentTime: TextView
     private lateinit var txtTotalTime: TextView
-    private var songs: List<Song> = emptyList()
+    private lateinit var editSearch: EditText
+    
+    private var allSongs: List<Song> = emptyList()
+    private var filteredSongs: List<Song> = emptyList()
     
     private lateinit var db: AppDatabase
 
@@ -67,11 +72,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Inicializar base de datos
-        db = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java, "music-db"
-        ).build()
+        db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "music-db").build()
 
         recycler = findViewById(R.id.recyclerSongs)
         txtNowPlaying = findViewById(R.id.txtNowPlaying)
@@ -79,6 +80,7 @@ class MainActivity : AppCompatActivity() {
         seekBar = findViewById(R.id.seekBar)
         txtCurrentTime = findViewById(R.id.txtCurrentTime)
         txtTotalTime = findViewById(R.id.txtTotalTime)
+        editSearch = findViewById(R.id.editSearch)
         recycler.layoutManager = LinearLayoutManager(this)
 
         btnPlayPause.setOnClickListener {
@@ -87,14 +89,20 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnNext).setOnClickListener { controller?.seekToNext() }
         findViewById<Button>(R.id.btnPrev).setOnClickListener { controller?.seekToPrevious() }
 
-        // --- Lógica de listas ---
-        findViewById<Button>(R.id.btnCreatePlaylist).setOnClickListener {
-            showCreatePlaylistDialog()
+        findViewById<Button>(R.id.btnCreatePlaylist).setOnClickListener { showCreatePlaylistDialog() }
+        findViewById<Button>(R.id.btnAddToPlaylist).setOnClickListener { showAddToPlaylistDialog() }
+        findViewById<Button>(R.id.btnViewPlaylists).setOnClickListener {
+            startActivity(Intent(this, PlaylistListActivity::class.java))
         }
 
-        findViewById<Button>(R.id.btnAddToPlaylist).setOnClickListener {
-            showAddToPlaylistDialog()
-        }
+        // LÓGICA DEL BUSCADOR
+        editSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                filter(s.toString())
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -116,6 +124,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Función para filtrar las canciones
+    private fun filter(query: String) {
+        filteredSongs = if (query.isEmpty()) {
+            allSongs
+        } else {
+            allSongs.filter { 
+                it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) 
+            }
+        }
+        recycler.adapter = SongAdapter(filteredSongs) { song ->
+            val index = allSongs.indexOf(song) // Usamos allSongs para mantener el orden del reproductor
+            controller?.seekTo(index, 0)
+            controller?.play()
+        }
+    }
+
     private fun showCreatePlaylistDialog() {
         val input = EditText(this)
         AlertDialog.Builder(this)
@@ -124,7 +148,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Crear") { _, _ ->
                 val name = input.text.toString()
                 if (name.isNotBlank()) {
-                        lifecycleScope.launch {
+                    lifecycleScope.launch {
                         db.playlistDao().insertPlaylist(Playlist(name = name))
                         Toast.makeText(this@MainActivity, "Lista '$name' creada", Toast.LENGTH_SHORT).show()
                     }
@@ -136,11 +160,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAddToPlaylistDialog() {
         val currentIndex = controller?.currentMediaItemIndex ?: 0
-        if (currentIndex !in songs.indices) {
+        if (currentIndex !in allSongs.indices) {
             Toast.makeText(this, "Primero pon una canción", Toast.LENGTH_SHORT).show()
             return
         }
-        val currentSong = songs[currentIndex]
+        val currentSong = allSongs[currentIndex]
 
         lifecycleScope.launch {
             val playlists = db.playlistDao().getAllPlaylists()
@@ -170,7 +194,7 @@ class MainActivity : AppCompatActivity() {
         controllerFuture = MediaController.Builder(this, token).buildAsync()
         controllerFuture.addListener({
             controller = controllerFuture.get()
-            val items = songs.map { MediaItem.fromUri(it.uri) }
+            val items = allSongs.map { MediaItem.fromUri(it.uri) }
             controller?.setMediaItems(items)
             controller?.prepare()
 
@@ -180,15 +204,15 @@ class MainActivity : AppCompatActivity() {
                 override fun onPlaybackStateChanged(playbackState: Int) { updateUI() }
             })
 
-            songs.firstOrNull()?.let { txtNowPlaying.text = "▶ ${it.title} — ${it.artist}" }
+            allSongs.firstOrNull()?.let { txtNowPlaying.text = "▶ ${it.title} — ${it.artist}" }
             handler.post(updateProgressTask)
         }, MoreExecutors.directExecutor())
     }
 
     private fun updateUI() {
         val index = controller?.currentMediaItemIndex ?: 0
-        if (index in songs.indices) {
-            val song = songs[index]
+        if (index in allSongs.indices) {
+            val song = allSongs[index]
             val estado = if (controller?.isPlaying == true) "▶" else "⏸"
             txtNowPlaying.text = "$estado ${song.title} — ${song.artist}"
             btnPlayPause.text = if (controller?.isPlaying == true) "⏸" else "▶️"
@@ -233,9 +257,10 @@ class MainActivity : AppCompatActivity() {
                 list.add(Song(id, title, artist, uri))
             }
         }
-        songs = list
-        recycler.adapter = SongAdapter(songs) { song ->
-            val index = songs.indexOf(song)
+        allSongs = list
+        filteredSongs = list
+        recycler.adapter = SongAdapter(allSongs) { song ->
+            val index = allSongs.indexOf(song)
             controller?.seekTo(index, 0)
             controller?.play()
         }
