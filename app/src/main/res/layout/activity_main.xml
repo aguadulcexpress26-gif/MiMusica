@@ -108,6 +108,17 @@
         android:singleLine="true"
         android:layout_marginBottom="8dp"/>
 
+    <!-- NUEVO: BOTÓN PARA AÑADIR SELECCIONADOS (Oculto por defecto) -->
+    <Button
+        android:id="@+id/btnAddSelected"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📋 Añadir canciones seleccionadas"
+        android:backgroundTint="#10b981"
+        android:textColor="#ffffff"
+        android:visibility="gone"
+        android:layout_marginBottom="8dp"/>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerSongs"
         android:layout_width="match_parent"
