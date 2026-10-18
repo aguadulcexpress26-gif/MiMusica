@@ -90,12 +90,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnPrev).setOnClickListener { controller?.seekToPrevious() }
 
         findViewById<Button>(R.id.btnCreatePlaylist).setOnClickListener { showCreatePlaylistDialog() }
-        findViewById<Button>(R.id.btnAddToPlaylist).setOnClickListener { showAddToPlaylistDialog() }
         findViewById<Button>(R.id.btnViewPlaylists).setOnClickListener {
             startActivity(Intent(this, PlaylistListActivity::class.java))
         }
 
-        // LÓGICA DEL BUSCADOR
         editSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -124,7 +122,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Función para filtrar las canciones
     private fun filter(query: String) {
         filteredSongs = if (query.isEmpty()) {
             allSongs
@@ -133,11 +130,21 @@ class MainActivity : AppCompatActivity() {
                 it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) 
             }
         }
-        recycler.adapter = SongAdapter(filteredSongs) { song ->
-            val index = allSongs.indexOf(song) // Usamos allSongs para mantener el orden del reproductor
-            controller?.seekTo(index, 0)
-            controller?.play()
-        }
+        updateAdapter()
+    }
+
+    // Nueva función para asignar el adaptador (con clic normal y clic largo)
+    private fun updateAdapter() {
+        recycler.adapter = SongAdapter(filteredSongs, 
+            onClick = { song ->
+                val index = allSongs.indexOf(song)
+                controller?.seekTo(index, 0)
+                controller?.play()
+            },
+            onLongClick = { song ->
+                showAddToPlaylistDialog(song)
+            }
+        )
     }
 
     private fun showCreatePlaylistDialog() {
@@ -158,14 +165,8 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showAddToPlaylistDialog() {
-        val currentIndex = controller?.currentMediaItemIndex ?: 0
-        if (currentIndex !in allSongs.indices) {
-            Toast.makeText(this, "Primero pon una canción", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val currentSong = allSongs[currentIndex]
-
+    // Ahora recibe la canción que hemos dejado pulsada
+    private fun showAddToPlaylistDialog(song: Song) {
         lifecycleScope.launch {
             val playlists = db.playlistDao().getAllPlaylists()
             if (playlists.isEmpty()) {
@@ -174,12 +175,12 @@ class MainActivity : AppCompatActivity() {
             }
             val names = playlists.map { it.name }.toTypedArray()
             AlertDialog.Builder(this@MainActivity)
-                .setTitle("Añadir '${currentSong.title}' a:")
+                .setTitle("Añadir '${song.title}' a:")
                 .setItems(names) { _, which ->
                     val selectedPlaylist = playlists[which]
                     lifecycleScope.launch {
                         db.playlistDao().insertPlaylistSong(
-                            PlaylistSong(playlistId = selectedPlaylist.id, songId = currentSong.id)
+                            PlaylistSong(playlistId = selectedPlaylist.id, songId = song.id)
                         )
                         Toast.makeText(this@MainActivity, "Añadida a '${selectedPlaylist.name}'", Toast.LENGTH_SHORT).show()
                     }
@@ -259,11 +260,7 @@ class MainActivity : AppCompatActivity() {
         }
         allSongs = list
         filteredSongs = list
-        recycler.adapter = SongAdapter(allSongs) { song ->
-            val index = allSongs.indexOf(song)
-            controller?.seekTo(index, 0)
-            controller?.play()
-        }
+        updateAdapter()
     }
 
     override fun onDestroy() {
