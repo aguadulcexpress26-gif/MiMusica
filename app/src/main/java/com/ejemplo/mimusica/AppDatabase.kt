@@ -9,16 +9,16 @@ import androidx.room.RoomDatabase
 @Dao
 interface PlaylistDao {
     @Query("SELECT * FROM playlists")
-    fun getAllPlaylists(): List<Playlist>
+    suspend fun getAllPlaylists(): List<Playlist>
 
     @Insert
-    fun insertPlaylist(playlist: Playlist): Long
+    suspend fun insertPlaylist(playlist: Playlist): Long
 
     @Insert
-    fun insertPlaylistSong(playlistSong: PlaylistSong)
+    suspend fun insertPlaylistSong(playlistSong: PlaylistSong)
 
     @Query("SELECT songId FROM playlist_songs WHERE playlistId = :playlistId")
-    fun getSongIdsForPlaylist(playlistId: Int): List<Long>
+    suspend fun getSongIdsForPlaylist(playlistId: Int): List<Long>
 }
 
 @Database(entities = [Playlist::class, PlaylistSong::class], version = 1)
