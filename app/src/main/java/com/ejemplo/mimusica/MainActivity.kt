@@ -2,8 +2,11 @@ package com.ejemplo.mimusica
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -45,9 +48,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtCurrentTime: TextView
     private lateinit var txtTotalTime: TextView
     private lateinit var editSearch: EditText
-    
-    // NUEVOS ELEMENTOS PARA SELECCIÓN MÚLTIPLE
     private lateinit var btnAddSelected: Button
+    
     private var isSelectionMode = false
     private val selectedSongs = mutableListOf<Song>()
     
@@ -65,6 +67,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // RECIBE LA ORDEN DE REPRODUCIR DESDE LA LISTA
+    private val playSongReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val songId = intent?.getLongExtra("SONG_ID", -1L) ?: -1L
+            if (songId != -1L) {
+                val songIndex = allSongs.indexOfFirst { it.id == songId }
+                if (songIndex != -1) {
+                    controller?.seekTo(songIndex, 0)
+                    controller?.play()
+                }
+            }
+        }
+    }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -77,16 +93,7 @@ class MainActivity : AppCompatActivity() {
     private val playPlaylistLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val selectedSongId = result.data?.getLongExtra("SELECTED_SONG_ID", -1L) ?: -1L
-            if (selectedSongId != -1L) {
-                val songIndex = allSongs.indexOfFirst { it.id == selectedSongId }
-                if (songIndex != -1) {
-                    controller?.seekTo(songIndex, 0)
-                    controller?.play()
-                }
-            }
-        }
+        // Ya no hacemos nada aquí porque usamos el BroadcastReceiver
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,8 +109,15 @@ class MainActivity : AppCompatActivity() {
         txtCurrentTime = findViewById(R.id.txtCurrentTime)
         txtTotalTime = findViewById(R.id.txtTotalTime)
         editSearch = findViewById(R.id.editSearch)
-        btnAddSelected = findViewById(R.id.btnAddSelected) // NUEVO BOTÓN
+        btnAddSelected = findViewById(R.id.btnAddSelected)
         recycler.layoutManager = LinearLayoutManager(this)
+
+        // Registrar el receptor de la lista
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(playSongReceiver, IntentFilter("PLAY_SONG_FROM_PLAYLIST"), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(playSongReceiver, IntentFilter("PLAY_SONG_FROM_PLAYLIST"))
+        }
 
         btnPlayPause.setOnClickListener {
             if (controller?.isPlaying == true) controller?.pause() else controller?.play()
@@ -118,7 +132,6 @@ class MainActivity : AppCompatActivity() {
             playPlaylistLauncher.launch(intent)
         }
 
-        // LÓGICA DEL BOTÓN DE AÑADIR SELECCIONADOS
         btnAddSelected.setOnClickListener {
             if (selectedSongs.isNotEmpty()) {
                 showAddMultipleToPlaylistDialog(selectedSongs)
@@ -183,15 +196,18 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // --- NUEVAS FUNCIONES DE SELECCIÓN MÚLTIPLE ---
-
     private fun enterSelectionMode(song: Song) {
         isSelectionMode = true
         selectedSongs.clear()
         song.isSelected = true
         selectedSongs.add(song)
         updateAddSelectedButton()
-        updateAdapter()
+        
+        // Solo actualizamos la fila seleccionada
+        val position = filteredSongs.indexOf(song)
+        if (position != -1 && recycler.adapter is SongAdapter) {
+            (recycler.adapter as SongAdapter).updateSingleItem(position)
+        }
     }
 
     private fun toggleSelection(song: Song) {
@@ -207,7 +223,12 @@ class MainActivity : AppCompatActivity() {
             isSelectionMode = false
         }
         updateAddSelectedButton()
-        updateAdapter()
+        
+        // Solo actualizamos la fila tocada
+        val position = filteredSongs.indexOf(song)
+        if (position != -1 && recycler.adapter is SongAdapter) {
+            (recycler.adapter as SongAdapter).updateSingleItem(position)
+        }
     }
 
     private fun updateAddSelectedButton() {
@@ -251,7 +272,7 @@ class MainActivity : AppCompatActivity() {
         selectedSongs.clear()
         isSelectionMode = false
         updateAddSelectedButton()
-        updateAdapter()
+        updateAdapter() // Aquí sí recargamos todo para limpiar los colores
     }
 
     private fun showCreatePlaylistDialog() {
@@ -346,6 +367,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(playSongReceiver)
+        } catch (e: Exception) {}
         handler.removeCallbacks(updateProgressTask)
         controllerFuture.addListener({ MediaController.releaseFuture(controllerFuture) }, MoreExecutors.directExecutor())
         super.onDestroy()
