@@ -13,6 +13,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.SeekBar
@@ -45,6 +46,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtTotalTime: TextView
     private lateinit var editSearch: EditText
     
+    // NUEVOS ELEMENTOS PARA SELECCIÓN MÚLTIPLE
+    private lateinit var btnAddSelected: Button
+    private var isSelectionMode = false
+    private val selectedSongs = mutableListOf<Song>()
+    
     private var allSongs: List<Song> = emptyList()
     private var filteredSongs: List<Song> = emptyList()
     
@@ -68,7 +74,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // NUEVO: Esperamos la respuesta de la pantalla de Listas
     private val playPlaylistLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -97,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         txtCurrentTime = findViewById(R.id.txtCurrentTime)
         txtTotalTime = findViewById(R.id.txtTotalTime)
         editSearch = findViewById(R.id.editSearch)
+        btnAddSelected = findViewById(R.id.btnAddSelected) // NUEVO BOTÓN
         recycler.layoutManager = LinearLayoutManager(this)
 
         btnPlayPause.setOnClickListener {
@@ -107,10 +113,16 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnCreatePlaylist).setOnClickListener { showCreatePlaylistDialog() }
         
-        // CAMBIO: Ahora usa el launcher
         findViewById<Button>(R.id.btnViewPlaylists).setOnClickListener {
             val intent = Intent(this, PlaylistListActivity::class.java)
             playPlaylistLauncher.launch(intent)
+        }
+
+        // LÓGICA DEL BOTÓN DE AÑADIR SELECCIONADOS
+        btnAddSelected.setOnClickListener {
+            if (selectedSongs.isNotEmpty()) {
+                showAddMultipleToPlaylistDialog(selectedSongs)
+            }
         }
 
         editSearch.addTextChangedListener(object : TextWatcher {
@@ -153,16 +165,93 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateAdapter() {
-        recycler.adapter = SongAdapter(filteredSongs, 
+        recycler.adapter = SongAdapter(filteredSongs, isSelectionMode,
             onClick = { song ->
-                val index = allSongs.indexOf(song)
-                controller?.seekTo(index, 0)
-                controller?.play()
+                if (isSelectionMode) {
+                    toggleSelection(song)
+                } else {
+                    val index = allSongs.indexOf(song)
+                    controller?.seekTo(index, 0)
+                    controller?.play()
+                }
             },
             onLongClick = { song ->
-                showAddToPlaylistDialog(song)
+                if (!isSelectionMode) {
+                    enterSelectionMode(song)
+                }
             }
         )
+    }
+
+    // --- NUEVAS FUNCIONES DE SELECCIÓN MÚLTIPLE ---
+
+    private fun enterSelectionMode(song: Song) {
+        isSelectionMode = true
+        selectedSongs.clear()
+        song.isSelected = true
+        selectedSongs.add(song)
+        updateAddSelectedButton()
+        updateAdapter()
+    }
+
+    private fun toggleSelection(song: Song) {
+        if (song.isSelected) {
+            song.isSelected = false
+            selectedSongs.remove(song)
+        } else {
+            song.isSelected = true
+            selectedSongs.add(song)
+        }
+
+        if (selectedSongs.isEmpty()) {
+            isSelectionMode = false
+        }
+        updateAddSelectedButton()
+        updateAdapter()
+    }
+
+    private fun updateAddSelectedButton() {
+        if (isSelectionMode && selectedSongs.isNotEmpty()) {
+            btnAddSelected.visibility = View.VISIBLE
+            btnAddSelected.text = "📋 Añadir ${selectedSongs.size} canciones a lista"
+        } else {
+            btnAddSelected.visibility = View.GONE
+        }
+    }
+
+    private fun showAddMultipleToPlaylistDialog(songsToAdd: List<Song>) {
+        lifecycleScope.launch {
+            val playlists = db.playlistDao().getAllPlaylists()
+            if (playlists.isEmpty()) {
+                Toast.makeText(this@MainActivity, "Primero crea una lista", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val names = playlists.map { it.name }.toTypedArray()
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("Añadir ${songsToAdd.size} canciones a:")
+                .setItems(names) { _, which ->
+                    val selectedPlaylist = playlists[which]
+                    lifecycleScope.launch {
+                        for (song in songsToAdd) {
+                            db.playlistDao().insertPlaylistSong(
+                                PlaylistSong(playlistId = selectedPlaylist.id, songId = song.id)
+                            )
+                        }
+                        Toast.makeText(this@MainActivity, "${songsToAdd.size} canciones añadidas a '${selectedPlaylist.name}'", Toast.LENGTH_SHORT).show()
+                        exitSelectionMode()
+                    }
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
+    }
+
+    private fun exitSelectionMode() {
+        for (song in allSongs) { song.isSelected = false }
+        selectedSongs.clear()
+        isSelectionMode = false
+        updateAddSelectedButton()
+        updateAdapter()
     }
 
     private fun showCreatePlaylistDialog() {
@@ -181,30 +270,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancelar", null)
             .show()
-    }
-
-    private fun showAddToPlaylistDialog(song: Song) {
-        lifecycleScope.launch {
-            val playlists = db.playlistDao().getAllPlaylists()
-            if (playlists.isEmpty()) {
-                Toast.makeText(this@MainActivity, "Primero crea una lista", Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            val names = playlists.map { it.name }.toTypedArray()
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle("Añadir '${song.title}' a:")
-                .setItems(names) { _, which ->
-                    val selectedPlaylist = playlists[which]
-                    lifecycleScope.launch {
-                        db.playlistDao().insertPlaylistSong(
-                            PlaylistSong(playlistId = selectedPlaylist.id, songId = song.id)
-                        )
-                        Toast.makeText(this@MainActivity, "Añadida a '${selectedPlaylist.name}'", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                .setNegativeButton("Cancelar", null)
-                .show()
-        }
     }
 
     private fun connectController() {
