@@ -16,7 +16,6 @@
         android:maxLines="2"
         android:ellipsize="end" />
 
-    <!-- NUEVO: Barra de progreso y tiempos -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -46,7 +45,6 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- Botones de control -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -74,6 +72,31 @@
             android:layout_weight="1"
             android:layout_height="wrap_content"
             android:text="⏩" />
+    </LinearLayout>
+
+    <!-- NUEVOS BOTONES PARA LISTAS -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="8dp"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/btnCreatePlaylist"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="➕ Crear Lista" />
+
+        <Button
+            android:id="@+id/btnAddToPlaylist"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="📋 Añadir a Lista" 
+            android:layout_marginLeft="8dp"/>
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
