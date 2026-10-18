@@ -68,6 +68,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // NUEVO: Esperamos la respuesta de la pantalla de Listas
+    private val playPlaylistLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val selectedSongId = result.data?.getLongExtra("SELECTED_SONG_ID", -1L) ?: -1L
+            if (selectedSongId != -1L) {
+                val songIndex = allSongs.indexOfFirst { it.id == selectedSongId }
+                if (songIndex != -1) {
+                    controller?.seekTo(songIndex, 0)
+                    controller?.play()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -90,8 +106,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnPrev).setOnClickListener { controller?.seekToPrevious() }
 
         findViewById<Button>(R.id.btnCreatePlaylist).setOnClickListener { showCreatePlaylistDialog() }
+        
+        // CAMBIO: Ahora usa el launcher
         findViewById<Button>(R.id.btnViewPlaylists).setOnClickListener {
-            startActivity(Intent(this, PlaylistListActivity::class.java))
+            val intent = Intent(this, PlaylistListActivity::class.java)
+            playPlaylistLauncher.launch(intent)
         }
 
         editSearch.addTextChangedListener(object : TextWatcher {
@@ -133,7 +152,6 @@ class MainActivity : AppCompatActivity() {
         updateAdapter()
     }
 
-    // Nueva función para asignar el adaptador (con clic normal y clic largo)
     private fun updateAdapter() {
         recycler.adapter = SongAdapter(filteredSongs, 
             onClick = { song ->
@@ -165,7 +183,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    // Ahora recibe la canción que hemos dejado pulsada
     private fun showAddToPlaylistDialog(song: Song) {
         lifecycleScope.launch {
             val playlists = db.playlistDao().getAllPlaylists()
