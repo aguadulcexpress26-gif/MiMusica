@@ -6,8 +6,11 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -19,6 +22,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,7 +31,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recycler: RecyclerView
     private lateinit var txtNowPlaying: TextView
     private lateinit var btnPlayPause: Button
+    private lateinit var seekBar: SeekBar
+    private lateinit var txtCurrentTime: TextView
+    private lateinit var txtTotalTime: TextView
     private var songs: List<Song> = emptyList()
+
+    // Variables para la barra de progreso
+    private val handler = Handler(Looper.getMainLooper())
+    private var isUserSeeking = false
+    private val updateProgressTask = object : Runnable {
+        override fun run() {
+            if (!isUserSeeking) {
+                updateProgress()
+            }
+            handler.postDelayed(this, 500) // Actualizar cada medio segundo
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -45,10 +64,13 @@ class MainActivity : AppCompatActivity() {
         recycler = findViewById(R.id.recyclerSongs)
         txtNowPlaying = findViewById(R.id.txtNowPlaying)
         btnPlayPause = findViewById(R.id.btnPlayPause)
+        seekBar = findViewById(R.id.seekBar)
+        txtCurrentTime = findViewById(R.id.txtCurrentTime)
+        txtTotalTime = findViewById(R.id.txtTotalTime)
         recycler.layoutManager = LinearLayoutManager(this)
 
         // Lógica de los botones
-        findViewById<Button>(R.id.btnPlayPause).setOnClickListener {
+        btnPlayPause.setOnClickListener {
             if (controller?.isPlaying == true) {
                 controller?.pause()
             } else {
@@ -63,6 +85,24 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnPrev).setOnClickListener {
             controller?.seekToPrevious()
         }
+
+        // Lógica de arrastrar la barra de progreso
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    txtCurrentTime.text = formatTime(progress.toLong())
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isUserSeeking = true
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                controller?.seekTo(seekBar?.progress?.toLong() ?: 0)
+                isUserSeeking = false
+            }
+        })
 
         val permiso = if (Build.VERSION.SDK_INT >= 33)
             Manifest.permission.READ_MEDIA_AUDIO
@@ -87,8 +127,7 @@ class MainActivity : AppCompatActivity() {
             val items = songs.map { MediaItem.fromUri(it.uri) }
             controller?.setMediaItems(items)
             controller?.prepare()
-            
-            // Actualizar texto y botón cuando cambie la canción o el estado
+
             controller?.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     updateUI()
@@ -96,11 +135,18 @@ class MainActivity : AppCompatActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     updateUI()
                 }
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    updateUI()
+                }
             })
 
             songs.firstOrNull()?.let {
                 txtNowPlaying.text = "▶ ${it.title} — ${it.artist}"
             }
+
+            // Iniciar el bucle que actualiza la barra
+            handler.post(updateProgressTask)
+
         }, MoreExecutors.directExecutor())
     }
 
@@ -112,6 +158,30 @@ class MainActivity : AppCompatActivity() {
             txtNowPlaying.text = "$estado ${song.title} — ${song.artist}"
             btnPlayPause.text = if (controller?.isPlaying == true) "⏸" else "▶️"
         }
+    }
+
+    private fun updateProgress() {
+        val c = controller ?: return
+        val duration = c.duration
+        val current = c.currentPosition
+
+        if (duration > 0) {
+            seekBar.max = duration.toInt()
+            seekBar.progress = current.toInt()
+            txtTotalTime.text = formatTime(duration)
+            txtCurrentTime.text = formatTime(current)
+        } else {
+            seekBar.max = 100
+            seekBar.progress = 0
+            txtTotalTime.text = "00:00"
+            txtCurrentTime.text = "00:00"
+        }
+    }
+
+    private fun formatTime(millis: Long): String {
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
+        val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
+        return String.format("%02d:%02d", minutes, seconds)
     }
 
     private fun loadSongs() {
@@ -151,6 +221,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(updateProgressTask)
         controllerFuture.addListener({
             MediaController.releaseFuture(controllerFuture)
         }, MoreExecutors.directExecutor())
