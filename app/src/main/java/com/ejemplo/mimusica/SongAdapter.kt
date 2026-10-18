@@ -8,7 +8,8 @@ import androidx.recyclerview.widget.RecyclerView
 
 class SongAdapter(
     private val songs: List<Song>,
-    private val onClick: (Song) -> Unit
+    private val onClick: (Song) -> Unit,
+    private val onLongClick: (Song) -> Unit // <-- NUEVO
 ) : RecyclerView.Adapter<SongAdapter.SongVH>() {
 
     class SongVH(view: View) : RecyclerView.ViewHolder(view) {
@@ -26,7 +27,15 @@ class SongAdapter(
         val song = songs[position]
         holder.txtTitle.text = song.title
         holder.txtArtist.text = song.artist
+        
+        // Clic normal (reproducir)
         holder.itemView.setOnClickListener { onClick(song) }
+        
+        // Clic largo (abrir menú de listas)
+        holder.itemView.setOnLongClickListener { 
+            onLongClick(song)
+            true 
+        }
     }
 
     override fun getItemCount(): Int = songs.size
