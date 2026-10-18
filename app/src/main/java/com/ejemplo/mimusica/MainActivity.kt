@@ -2,11 +2,8 @@ package com.ejemplo.mimusica
 
 import android.Manifest
 import android.app.AlertDialog
-import android.content.BroadcastReceiver
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -16,6 +13,8 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -67,20 +66,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // RECIBE LA ORDEN DE REPRODUCIR DESDE LA LISTA
-    private val playSongReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val songId = intent?.getLongExtra("SONG_ID", -1L) ?: -1L
-            if (songId != -1L) {
-                val songIndex = allSongs.indexOfFirst { it.id == songId }
-                if (songIndex != -1) {
-                    controller?.seekTo(songIndex, 0)
-                    controller?.play()
-                }
-            }
-        }
-    }
-
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -93,7 +78,7 @@ class MainActivity : AppCompatActivity() {
     private val playPlaylistLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        // Ya no hacemos nada aquí porque usamos el BroadcastReceiver
+        // No hacemos nada aquí, lo gestiona onResume
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,13 +96,6 @@ class MainActivity : AppCompatActivity() {
         editSearch = findViewById(R.id.editSearch)
         btnAddSelected = findViewById(R.id.btnAddSelected)
         recycler.layoutManager = LinearLayoutManager(this)
-
-        // Registrar el receptor de la lista
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(playSongReceiver, IntentFilter("PLAY_SONG_FROM_PLAYLIST"), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(playSongReceiver, IntentFilter("PLAY_SONG_FROM_PLAYLIST"))
-        }
 
         btnPlayPause.setOnClickListener {
             if (controller?.isPlaying == true) controller?.pause() else controller?.play()
@@ -166,6 +144,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // LEER LA MEMORIA CUANDO VOLVEMOS A LA PANTALLA PRINCIPAL
+    override fun onResume() {
+        super.onResume()
+        val prefs = getSharedPreferences("MusicPrefs", MODE_PRIVATE)
+        val pendingSongId = prefs.getLong("PENDING_SONG_ID", -1L)
+        
+        if (pendingSongId != -1L) {
+            // Limpiamos la memoria para que no se repita
+            prefs.edit().remove("PENDING_SONG_ID").apply()
+            
+            // Buscamos la canción y la reproducimos
+            val songIndex = allSongs.indexOfFirst { it.id == pendingSongId }
+            if (songIndex != -1) {
+                controller?.seekTo(songIndex, 0)
+                controller?.play()
+            }
+        }
+    }
+
+    // CREAR EL BOTÓN DE CANCELAR EN LA BARRA SUPERIOR
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        if (isSelectionMode) {
+            menu?.add(0, 1, 0, "❌ Cancelar selección")
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1) {
+            exitSelectionMode()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
     private fun filter(query: String) {
         filteredSongs = if (query.isEmpty()) {
             allSongs
@@ -202,8 +215,8 @@ class MainActivity : AppCompatActivity() {
         song.isSelected = true
         selectedSongs.add(song)
         updateAddSelectedButton()
+        invalidateOptionsMenu() // <-- Refresca el menú superior
         
-        // Solo actualizamos la fila seleccionada
         val position = filteredSongs.indexOf(song)
         if (position != -1 && recycler.adapter is SongAdapter) {
             (recycler.adapter as SongAdapter).updateSingleItem(position)
@@ -220,11 +233,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (selectedSongs.isEmpty()) {
-            isSelectionMode = false
+            exitSelectionMode()
+        } else {
+            updateAddSelectedButton()
         }
-        updateAddSelectedButton()
         
-        // Solo actualizamos la fila tocada
         val position = filteredSongs.indexOf(song)
         if (position != -1 && recycler.adapter is SongAdapter) {
             (recycler.adapter as SongAdapter).updateSingleItem(position)
@@ -272,7 +285,8 @@ class MainActivity : AppCompatActivity() {
         selectedSongs.clear()
         isSelectionMode = false
         updateAddSelectedButton()
-        updateAdapter() // Aquí sí recargamos todo para limpiar los colores
+        invalidateOptionsMenu() // <-- Refresca el menú superior
+        updateAdapter()
     }
 
     private fun showCreatePlaylistDialog() {
@@ -310,6 +324,9 @@ class MainActivity : AppCompatActivity() {
 
             allSongs.firstOrNull()?.let { txtNowPlaying.text = "▶ ${it.title} — ${it.artist}" }
             handler.post(updateProgressTask)
+            
+            // Si había una canción pendiente de la lista, la reproducimos al conectar
+            onResume()
         }, MoreExecutors.directExecutor())
     }
 
@@ -367,9 +384,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try {
-            unregisterReceiver(playSongReceiver)
-        } catch (e: Exception) {}
         handler.removeCallbacks(updateProgressTask)
         controllerFuture.addListener({ MediaController.releaseFuture(controllerFuture) }, MoreExecutors.directExecutor())
         super.onDestroy()
