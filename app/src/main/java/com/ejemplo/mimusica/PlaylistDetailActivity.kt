@@ -26,12 +26,16 @@ class PlaylistDetailActivity : AppCompatActivity() {
         listView = findViewById(R.id.listPlaylistSongs)
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "music-db").build()
 
-        // Al tocar, enviamos la orden de reproducir sin cerrar la pantalla
+        // Al tocar, guardamos la canción en la memoria y cerramos esta pantalla
         listView.setOnItemClickListener { _, _, position, _ ->
             val selectedSongId = songIdsList[position]
-            val intent = Intent("PLAY_SONG_FROM_PLAYLIST")
-            intent.putExtra("SONG_ID", selectedSongId)
-            sendBroadcast(intent) // Enviamos la señal a MainActivity
+            
+            // Usamos una "memoria compartida" del teléfono
+            val prefs = getSharedPreferences("MusicPrefs", MODE_PRIVATE)
+            prefs.edit().putLong("PENDING_SONG_ID", selectedSongId).apply()
+            
+            // Cerramos la pantalla para volver a la principal
+            finish() 
         }
         
         loadSongsFromPlaylist()
