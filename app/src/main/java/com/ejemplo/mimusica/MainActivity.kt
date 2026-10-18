@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.widget.Button
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     private var controller: MediaController? = null
     private lateinit var recycler: RecyclerView
     private lateinit var txtNowPlaying: TextView
+    private lateinit var btnPlayPause: Button
     private var songs: List<Song> = emptyList()
 
     private val permissionLauncher = registerForActivityResult(
@@ -42,7 +44,25 @@ class MainActivity : AppCompatActivity() {
 
         recycler = findViewById(R.id.recyclerSongs)
         txtNowPlaying = findViewById(R.id.txtNowPlaying)
+        btnPlayPause = findViewById(R.id.btnPlayPause)
         recycler.layoutManager = LinearLayoutManager(this)
+
+        // Lógica de los botones
+        findViewById<Button>(R.id.btnPlayPause).setOnClickListener {
+            if (controller?.isPlaying == true) {
+                controller?.pause()
+            } else {
+                controller?.play()
+            }
+        }
+
+        findViewById<Button>(R.id.btnNext).setOnClickListener {
+            controller?.seekToNext()
+        }
+
+        findViewById<Button>(R.id.btnPrev).setOnClickListener {
+            controller?.seekToPrevious()
+        }
 
         val permiso = if (Build.VERSION.SDK_INT >= 33)
             Manifest.permission.READ_MEDIA_AUDIO
@@ -64,15 +84,34 @@ class MainActivity : AppCompatActivity() {
         controllerFuture = MediaController.Builder(this, token).buildAsync()
         controllerFuture.addListener({
             controller = controllerFuture.get()
-            // Cargar todas las canciones
             val items = songs.map { MediaItem.fromUri(it.uri) }
             controller?.setMediaItems(items)
             controller?.prepare()
-            // Mostrar la primera
+            
+            // Actualizar texto y botón cuando cambie la canción o el estado
+            controller?.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    updateUI()
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    updateUI()
+                }
+            })
+
             songs.firstOrNull()?.let {
                 txtNowPlaying.text = "▶ ${it.title} — ${it.artist}"
             }
         }, MoreExecutors.directExecutor())
+    }
+
+    private fun updateUI() {
+        val index = controller?.currentMediaItemIndex ?: 0
+        if (index in songs.indices) {
+            val song = songs[index]
+            val estado = if (controller?.isPlaying == true) "▶" else "⏸"
+            txtNowPlaying.text = "$estado ${song.title} — ${song.artist}"
+            btnPlayPause.text = if (controller?.isPlaying == true) "⏸" else "▶️"
+        }
     }
 
     private fun loadSongs() {
@@ -108,7 +147,6 @@ class MainActivity : AppCompatActivity() {
             val index = songs.indexOf(song)
             controller?.seekTo(index, 0)
             controller?.play()
-            txtNowPlaying.text = "▶ ${song.title} — ${song.artist}"
         }
     }
 
