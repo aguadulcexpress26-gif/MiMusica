@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Crear") { _, _ ->
                 val name = input.text.toString()
                 if (name.isNotBlank()) {
-                    lifecycleScope.launch {
+                        lifecycleScope.launch {
                         db.playlistDao().insertPlaylist(Playlist(name = name))
                         Toast.makeText(this@MainActivity, "Lista '$name' creada", Toast.LENGTH_SHORT).show()
                     }
