@@ -31,17 +31,13 @@ class SongAdapter(
         holder.txtTitle.text = song.title
         holder.txtArtist.text = song.artist
         
-        // Cambiar el color si está seleccionada
         if (song.isSelected) {
-            holder.root.setBackgroundColor(Color.parseColor("#334455")) // Color azul grisáceo
+            holder.root.setBackgroundColor(Color.parseColor("#334455"))
         } else {
             holder.root.setBackgroundColor(Color.TRANSPARENT)
         }
         
-        // Clic normal
         holder.itemView.setOnClickListener { onClick(song) }
-        
-        // Clic largo
         holder.itemView.setOnLongClickListener { 
             onLongClick(song)
             true 
@@ -49,4 +45,9 @@ class SongAdapter(
     }
 
     override fun getItemCount(): Int = songs.size
+
+    // NUEVA FUNCIÓN: Actualiza solo una fila para no perder el scroll
+    fun updateSingleItem(position: Int) {
+        notifyItemChanged(position)
+    }
 }
